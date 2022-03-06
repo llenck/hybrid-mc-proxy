@@ -1,5 +1,6 @@
-module NetworkSetup (connTCP, hostTCP) where
+module NetworkSetup (connTCP, hostTCP, withConn, withHost) where
 
+import Control.Exception (bracket)
 import Control.Monad (guard)
 
 import Network.Socket
@@ -30,3 +31,5 @@ hostTCP host service = do
     listen s 4
     return s
 
+withConn host service = bracket (connTCP host service) close
+withHost host service = bracket (hostTCP host service) close

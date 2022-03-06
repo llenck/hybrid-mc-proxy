@@ -13,8 +13,8 @@ spawnHandlers :: Socket -> IO ()
 spawnHandlers srv = forever $ accept srv >>= handleClient . fst
 
 main = do
-    s <- head <$> getArgs >>= hostTCP "0.0.0.0"
-    putStrLn "Started..."
-    race getLine (spawnHandlers s) -- run spawnHandlers until getLine finishes
-    putStrLn "Exiting..."
-    close s
+    port <- head <$> getArgs
+    withHost "0.0.0.0" port $ \s -> do
+        putStrLn "Started..."
+        race getLine (spawnHandlers s) -- run spawnHandlers until getLine finishes
+        putStrLn "Exiting..."

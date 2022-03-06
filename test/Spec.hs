@@ -7,6 +7,8 @@ import Data.VarInt.Put
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BL
 
+import MCProto
+
 testVarIntGet = do
     describe "Data.VarInt.Get" $ parallel $ do
         it "can parse non-negative VarInts" $ do
@@ -52,7 +54,17 @@ testVarIntPut = do
             let bs = BL.pack $ take 9 (repeat 255) ++ [1]
             runPut (putVarLong (-1)) `shouldBe` bs
 
+testMCProto = do
+    describe "MCProto" $ do
+        it "can handle unfinished packets" $ do
+            parsePackets (BS.pack [10, 1, 2, 3]) `shouldBe` ([], BS.pack [10, 1, 2, 3])
+
+        it "can parse multiple packets" $ do
+            let ps = [Other 0 BS.empty, Other 128 $ BS.pack [1]]
+            parsePackets (BS.pack [1, 0, 3, 128, 1, 1, 69, 42]) `shouldBe` (ps, BS.pack [69, 42])
+
 main :: IO ()
 main = hspec $ do
     testVarIntGet
     testVarIntPut
+    testMCProto
