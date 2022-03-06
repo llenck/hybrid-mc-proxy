@@ -25,6 +25,8 @@ source-repository head
 
 library
   exposed-modules:
+      Data.VarInt.Get
+      Data.VarInt.Put
       MCCrypto
       MCProto
       NetworkSetup

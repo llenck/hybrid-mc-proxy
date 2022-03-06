@@ -5,45 +5,19 @@ import Control.Applicative ((<|>))
 import Data.Binary.Put
 import Data.Binary.Strict.Get
 import Data.Bits
+import Data.Int
+import Data.Word
 
 import qualified Data.ByteString as BS
+
+import Data.VarInt.Get
+import Data.VarInt.Put
 
 data Packet = Foreign BS.ByteString
     | Other Int BS.ByteString deriving (Show, Eq)
 
 --data PacketInfo = Foreign
 --    | Other Int deriving (Show, Eq)
-
---parseVarInt = fst <$> parseVarIntLen
-
-parseVarInt :: Get Int
-parseVarInt = do
-    b <- fromIntegral <$> getWord8
-    case (b .&. 0x80) of
-        0x80 -> (\rem_int -> b .&. 0x7F .|. shiftL rem_int 7) <$> parseVarInt
-        0 -> return $ b .&. 0x7F
-
--- (varint, consumed_bytes)
--- can't implement this in terms of "bytesRead", because that also counts bytes read
--- by other things if our caller is also a "Get" instance
-parseVarIntLen :: Get (Int, Int)
-parseVarIntLen = do
-    b <- fromIntegral <$> getWord8
-    case (b .&. 0x80) of
-        0x80 -> do
-            (rem_int, rem_bytes) <- parseVarIntLen
-            return (b .&. 0x7F .|. shiftL rem_int 7, 1 + rem_bytes)
-        0 -> return (b .&. 0x7F, 1)
-
-
-formatVarInt :: Int -> BS.ByteString
-formatVarInt 0 = BS.empty
-formatVarInt n =
-    let more = shiftR n 7
-        cur = fromIntegral $ n .&. 0x7f .|. (if more > 0 then 0x80 else 0)
-    in cur `BS.cons` formatVarInt more
-
-putVarInt n = putByteString $ formatVarInt n
 
 parseValidPacket :: Get Packet
 parseValidPacket = do
