@@ -57,15 +57,21 @@ testVarIntPut = do
 testMCProto = do
     describe "MCProto" $ do
         it "can handle unfinished packets" $ do
-            parsePackets (BS.pack [10, 1, 2, 3]) `shouldBe` Right ([], BS.pack [10, 1, 2, 3])
+            parsePackets (BS.pack [10, 1, 2]) `shouldBe` Right ([], BS.pack [10, 1, 2])
 
         it "can parse multiple packets" $ do
             let ps = [Other 0 BS.empty, Other 128 $ BS.pack [1]]
             parsePackets (BS.pack [1, 0, 3, 128, 1, 1, 69, 42]) `shouldBe` Right (ps, BS.pack [69, 42])
 
         it "can reject packets with abnormal sizes" $ do
-            parsePackets (BL.toStrict $ runPut (putVarInt (2^30))) `shouldBe` Left "packet too large"
-            parsePackets (BL.toStrict $ runPut (putVarInt (-10))) `shouldBe` Left "packet with negative length"
+            let putVi = BL.toStrict . runPut . putVarInt
+            parsePackets (putVi (2^30)) `shouldBe` Left "packet too large"
+            parsePackets (putVi (-10)) `shouldBe` Left "packet with negative length"
+
+        it "can format previously parsed packets" $ do
+            let bs = BS.pack [1, 0, 5, 128, 1, 69, 4, 20]
+            let (Right (ps, _)) = parsePackets bs
+            mconcat (map formatPacket ps) `shouldBe` bs
 
 main :: IO ()
 main = hspec $ do

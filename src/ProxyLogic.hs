@@ -9,7 +9,7 @@ import Network.Socket.ByteString
 import qualified Data.ByteString as BS
 
 import NetworkSetup
-import qualified MCProto as P
+import MCProto
 
 data ProxyState = PS {
     packets :: Int
@@ -18,52 +18,42 @@ data ProxyState = PS {
 makeState = PS 0
 inc_ps st = let p' = packets st + 1 in (st {packets = p'}, p')
 
--- TODO this needs unconsumed stuff.
--- for testing that, just set the recv length to something small (e.g. 20)
-proxyCS :: IORef ProxyState -> Socket -> Socket -> BS.ByteString -> IO ()
-proxyCS st cl srv acc = do
-    buf <- recv cl 65536
-
-    -- for now, we forward everything, and just print packets.
-    -- in the final thing however, we should only pass valid, parsed packets, to have a chance
-    -- of doing any packet manipulation
-    let (ps, rem) = case P.parsePackets (acc <> buf) of
-            Right x -> x
-            Left err -> error err
-    mapM (\p -> putStrLn $ "C->S :: " ++ (show p)) ps
-
+proxy_ :: BS.ByteString -> ([Packet] -> IO ()) -> Socket -> IO ()
+proxy_ acc cb s = do
+    buf <- recv s 65536
     if BS.null buf
-    then putStrLn "C->S connection closed"
+    then cb []
     else do
-        num_packets <- atomicModifyIORef' st inc_ps
-        sendAll srv buf
-        putStrLn $ "Passed packet #" ++ (show num_packets) ++ " (C->S)"
+        let (ps, rem) = case parsePackets (acc <> buf) of
+                Right x -> x
+                Left err -> error err
+        cb ps
+        proxy_ rem cb s
 
-        proxyCS st cl srv rem
+proxy :: ([Packet] -> IO ()) -> Socket -> IO ()
+proxy = proxy_ BS.empty
 
-proxySC :: IORef ProxyState -> Socket -> Socket -> BS.ByteString -> IO ()
-proxySC st cl srv acc = do
-    buf <- recv srv 65536
+passPacket :: Socket -> Packet -> IO ()
+passPacket s pk = sendAll s $ formatPacket pk
 
-    -- see comment in proxyCS
-    let (ps, rem) = case P.parsePackets (acc <> buf) of
-            Right x -> x
-            Left err -> error err
-    mapM (\p -> putStrLn $ "S->C :: " ++ (show p)) ps
+passPackets :: Socket -> [Packet] -> IO ()
+passPackets s ps = sendAll s $ mconcat $ map formatPacket ps
 
-    if BS.null buf
-    then putStrLn "S->C connection closed"
+proxyLog :: IORef ProxyState -> String -> Socket -> Socket -> IO ()
+proxyLog st dir from to = flip proxy from $ \ps -> do
+    if null ps
+    then putStrLn $ dir ++ " connection closed"
     else do
+        mapM (\p -> putStrLn $ dir ++ " :: " ++ (show p)) ps
         num_packets <- atomicModifyIORef' st inc_ps
-        sendAll cl buf
-        putStrLn $ "Passed packet #" ++ (show num_packets) ++ " (S->C)"
-
-        proxySC st cl srv rem
+        passPackets to ps
+        putStrLn $ "Passed packet #" ++ (show num_packets) ++ " (" ++ dir ++ ")"
 
 -- withConn ensures closing of the connection to the server
 handleClient cl = withConn "69owo.de" "25566" $ \srv -> do
     st <- newIORef makeState
 
     -- this just runs proxyCS and proxySC until one exits, ignoring io failure
-    concurrently (proxyCS st cl srv BS.empty) (proxySC st cl srv BS.empty) <|> return ((), ())
+    let mkProxy = proxyLog st
+    concurrently (mkProxy "C->S" cl srv) (mkProxy "S->C" srv cl) <|> return ((), ())
     return ()
