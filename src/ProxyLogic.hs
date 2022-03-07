@@ -27,7 +27,9 @@ proxyCS st cl srv acc = do
     -- for now, we forward everything, and just print packets.
     -- in the final thing however, we should only pass valid, parsed packets, to have a chance
     -- of doing any packet manipulation
-    let (ps, rem) = P.parsePackets (acc <> buf)
+    let (ps, rem) = case P.parsePackets (acc <> buf) of
+            Right x -> x
+            Left err -> error err
     mapM (\p -> putStrLn $ "C->S :: " ++ (show p)) ps
 
     if BS.null buf
@@ -44,7 +46,9 @@ proxySC st cl srv acc = do
     buf <- recv srv 65536
 
     -- see comment in proxyCS
-    let (ps, rem) = P.parsePackets (acc <> buf)
+    let (ps, rem) = case P.parsePackets (acc <> buf) of
+            Right x -> x
+            Left err -> error err
     mapM (\p -> putStrLn $ "S->C :: " ++ (show p)) ps
 
     if BS.null buf

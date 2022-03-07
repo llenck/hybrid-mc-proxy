@@ -1,6 +1,5 @@
 module MCProto (Packet(..), parsePackets, formatPacket) where
 
-import Control.Applicative ((<|>), empty)
 import Data.Binary.Put
 import Data.Binary.Strict.Get
 import Data.Bits
@@ -16,19 +15,16 @@ data Packet = Other Int BS.ByteString deriving (Show, Eq)
 
 --data PacketInfo = Other Int deriving (Show, Eq)
 
+failIf msg b = if b then fail msg else pure ()
+
 getPacket :: Get Packet
 getPacket = do
     len <- parseVarInt
+    failIf "packet too large" $ len > 2^22 -- 4 MiB
+    failIf "packet with negative length" $ len < 0
     (p_id, id_len) <- parseVarIntLen
     case p_id of
         _ -> Other p_id <$> getByteString (len - id_len)
-
--- consume input only if we actually get a full packet
-nongreedyGetPacket = do
-    may_pk <- lookAheadM $ (Just <$> getPacket) <|> pure Nothing
-    case may_pk of
-        Just pk -> return pk
-        Nothing -> empty -- fail
 
 formatPacket :: Packet -> Put
 formatPacket (Other p_id bs) = do
@@ -37,12 +33,14 @@ formatPacket (Other p_id bs) = do
     putByteString id_bs                        -- packet id
     putByteString bs                           -- packet content
 
-parsePackets_ :: [Packet] -> BS.ByteString -> ([Packet], BS.ByteString)
+parsePackets_ :: [Packet] -> BS.ByteString -> Either String ([Packet], BS.ByteString)
 parsePackets_ acc bs =
-    let (may_pk, rem) = runGet nongreedyGetPacket bs in
+    let (may_pk, rem) = runGet getPacket bs in
         case may_pk of
-            Left _ -> (acc, rem)
             Right pk -> parsePackets_ (acc ++ [pk]) rem
+            -- getPacket may have eaten some input, so return "bs" instead of "rem"
+            Left "too few bytes" -> Right (acc, bs)
+            Left err -> Left err
 
-parsePackets :: BS.ByteString -> ([Packet], BS.ByteString)
+parsePackets :: BS.ByteString -> Either String ([Packet], BS.ByteString)
 parsePackets = parsePackets_ []
