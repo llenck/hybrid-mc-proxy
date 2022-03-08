@@ -67,3 +67,4 @@ tests:
     - hspec
     - binary
     - binary-strict
+    - random

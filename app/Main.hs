@@ -10,7 +10,7 @@ import ProxyLogic
 
 -- blocks
 spawnHandlers :: Socket -> IO ()
-spawnHandlers srv = forever $ accept srv >>= handleClient . fst
+spawnHandlers srv = forever $ withAccept srv $ handleClient . fst
 
 main = do
     port <- head <$> getArgs

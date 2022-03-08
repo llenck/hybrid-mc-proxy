@@ -2,12 +2,16 @@ import Test.Hspec
 
 import Data.Binary.Put
 import Data.Binary.Strict.Get
-import Data.VarInt.Get
-import Data.VarInt.Put
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BL
+import Network.Socket
+import Network.Socket.ByteString
+import System.Random (randomIO)
 
+import Data.VarInt.Get
+import Data.VarInt.Put
 import MCProto
+import NetworkSetup
 
 testVarIntGet = do
     describe "Data.VarInt.Get" $ parallel $ do
@@ -73,8 +77,46 @@ testMCProto = do
             let (Right (ps, _)) = parsePackets bs
             mconcat (map formatPacket ps) `shouldBe` bs
 
+-- NOTE: this *doesn't* check whether socket cleanup has been performed, just that
+-- the sockets work during their lifetime
+testNetwork = do
+    let randomPort = do
+            port_num <- randomIO :: IO Int
+            return (show $ (port_num `mod` 50000) + 10000)
+
+    describe "NetworkSetup" $ context "(can fail randomly, if a random port is already bound)" $ do
+        let bs = BS.pack [69, 42, 0]
+        let manualSockets = do
+                port <- randomPort
+                srv <- hostTCP "127.0.0.1" port
+                cl <- connTCP "127.0.0.1" port
+                (s_con, _) <- accept srv
+
+                sendAll cl bs
+                res <- recv s_con 3
+
+                mapM_ close [s_con, srv, cl]
+                return res
+        before manualSockets $ do
+            it "can create listening / connected sockets manually" $ \res -> do
+                res `shouldBe` bs
+
+        let withSockets = do
+                port <- randomPort
+                withHost "127.0.0.1" port $ \srv -> do
+                    withConn "127.0.0.1" port $ \cl -> do
+                        withAccept srv $ \(s_con, _) -> do
+                            sendAll cl bs
+                            res <- recv s_con 3
+                            return res
+
+        before withSockets $ do
+            it "can create / close listening / connected sockets automatically" $ \res -> do
+                res `shouldBe` bs
+
 main :: IO ()
 main = hspec $ do
     testVarIntGet
     testVarIntPut
     testMCProto
+    testNetwork

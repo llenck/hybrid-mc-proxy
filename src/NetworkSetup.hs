@@ -1,4 +1,4 @@
-module NetworkSetup (connTCP, hostTCP, withConn, withHost) where
+module NetworkSetup (connTCP, hostTCP, withConn, withHost, withAccept) where
 
 import Control.Exception (bracket)
 import Control.Monad (guard)
@@ -33,3 +33,4 @@ hostTCP host service = do
 
 withConn host service = bracket (connTCP host service) close
 withHost host service = bracket (hostTCP host service) close
+withAccept s = bracket (accept s) (close . fst)
